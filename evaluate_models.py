@@ -1,18 +1,25 @@
-import subprocess
 import json
+import requests
 from pathlib import Path
 from statistics import mean
 
-# --- Função para rodar modelo via Ollama ---
+# --- Function to run model via Ollama API ---
 def run_ollama(model: str, prompt: str) -> str:
-    result = subprocess.run(
-        ["ollama", "run", model, prompt],
-        capture_output=True,
-        text=True
-    )
-    return result.stdout.strip()
+    url = "http://localhost:11434/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False
+    }
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return response.json()["response"]
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error calling Ollama API for model {model}: {e}")
+        raise
 
-# --- Carregar arquivos ---
+# --- Load files ---
 prompts = Path("prompts.txt").read_text(encoding="utf-8").splitlines()
 models = Path("models.txt").read_text(encoding="utf-8").splitlines()
 judge_model = Path("judge.txt").read_text(encoding="utf-8").strip()
@@ -20,14 +27,14 @@ judge_model = Path("judge.txt").read_text(encoding="utf-8").strip()
 results = {model: [] for model in models}
 scores = {model: [] for model in models}
 
-# --- Executar prompts em todos os modelos ---
+# --- Run prompts on all models ---
 for model in models:
     for prompt in prompts:
-        print(f"▶️ Rodando prompt no modelo {model}...")
+        print(f"▶️ Running prompt on model {model}...")
         response = run_ollama(model, prompt)
         results[model].append({"prompt": prompt, "response": response})
 
-# --- Avaliar com modelo juiz ---
+# --- Evaluate with judge model ---
 evaluations = []
 for prompt in prompts:
     answers = {
@@ -35,56 +42,52 @@ for prompt in prompts:
         for m in models
     }
     evaluation_prompt = f"""
-Você é um avaliador. Compare as respostas para o seguinte prompt:
+You are an evaluator. Compare the responses for the following prompt:
 
 PROMPT: {prompt}
 
-Respostas:
+Responses:
 {json.dumps(answers, indent=2, ensure_ascii=False)}
 
-Para cada modelo, atribua uma nota de 1 a 5 considerando clareza, correção e completude.
-No final, indique qual modelo respondeu melhor.
-Formato esperado (JSON):
-{{
-  "scores": {{"modelo1": int, "modelo2": int, ...}},
-  "melhor": "nome do modelo"
-}}
+For each model, assign a score from 1 to 5 considering clarity, correctness, and completeness.
+In the end, indicate which model responded best.
+Expected format:
+
+Scores: 
+
+Model1: <score>
+Average: <average score>
+
+Model2: <score>
+Average: <average score>
+
+Best: <model name>
+
 """
-    print(f"⚖️ Avaliando respostas do prompt com {judge_model}...")
-    judge_response = run_ollama(judge_model, evaluation_prompt)
+    
+print(f"⚖️ Evaluating prompt responses with {judge_model}...")
+judge_response = run_ollama(judge_model, evaluation_prompt)
 
-    try:
-        parsed = json.loads(judge_response)
-        for model, score in parsed.get("scores", {}).items():
-            if model in scores:
-                scores[model].append(score)
-    except:
-        parsed = {"raw": judge_response}
+evaluations.append({"prompt": prompt, "evaluation": judge_response})
 
-    evaluations.append({"prompt": prompt, "evaluation": parsed})
-
-# --- Calcular ranking ---
-averages = {m: mean(vals) if vals else 0 for m, vals in scores.items()}
-ranking = sorted(averages.items(), key=lambda x: x[1], reverse=True)
-
-# --- Gerar relatório Markdown ---
-report = ["# Relatório de Avaliação de Modelos\n"]
+# --- Generate Markdown report ---
+report = ["# Model Evaluation Report\n"]
 
 for prompt in prompts:
     report.append(f"## Prompt\n```\n{prompt}\n```")
     for model in models:
         resp = next(r["response"] for r in results[model] if r["prompt"] == prompt)
-        report.append(f"### Modelo: `{model}`\n{resp}\n")
+        report.append(f"### Model: `{model}`\n{resp}\n")
     ev = next(e for e in evaluations if e["prompt"] == prompt)["evaluation"]
-    report.append("### Avaliação\n")
-    report.append("```json\n" + json.dumps(ev, indent=2, ensure_ascii=False) + "\n```")
+    report.append("### Evaluation\n")
+    report.append(ev)
 
-# --- Ranking final ---
-report.append("# Ranking Final\n")
-for i, (model, avg) in enumerate(ranking, 1):
-    notas = ", ".join(str(s) for s in scores[model]) if scores[model] else "sem notas"
-    report.append(f"{i}. **{model}** — Média: {avg:.2f} | Notas: [{notas}]")
+# --- Final ranking ---
+# report.append("# Final Ranking\n")
+# for i, (model, avg) in enumerate(ranking, 1):
+#     scores_str = ", ".join(str(s) for s in scores[model]) if scores[model] else "no scores"
+#     report.append(f"{i}. **{model}** — Average: {avg:.2f} | Scores: [{scores_str}]")
 
-Path("relatorio.md").write_text("\n\n".join(report), encoding="utf-8")
+Path("report.md").write_text("\n\n".join(report), encoding="utf-8")
 
-print("✅ Relatório gerado em relatorio.md")
+print("✅ Report generated in report.md")

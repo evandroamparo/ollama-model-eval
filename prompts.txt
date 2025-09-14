@@ -1,3 +1,5 @@
-Explique o que é encapsulamento em POO em termos simples.
-Resuma este texto em 3 linhas: O encapsulamento é um dos pilares da POO...
-Escreva uma função em C# que inverta uma string.
+Explain what encapsulation is in OOP in simple terms.
+Write a Python program that reads a CSV file and prints the sum of a specific column.
+Write a C# function that reverses a string.
+What is the importance of the discovery of dark matter in astronomy?
+How has the concept of existentialism influenced modern philosophy?

@@ -12,11 +12,11 @@ def run_cmd(cmd):
 models = Path("models.txt").read_text(encoding="utf-8").splitlines()
 judge_model = Path("judge.txt").read_text(encoding="utf-8").strip()
 
-print("📥 Baixando modelos...")
+print("📥 Downloading models...")
 
 for model in models + [judge_model]:
     if model.strip():
-        print(f"➡️  Pull do modelo: {model}")
+        print(f"➡️  Pulling model: {model}")
         run_cmd(["ollama", "pull", model])
 
-print("✅ Todos os modelos foram baixados.")
+print("✅ All models have been downloaded.")
