@@ -5,6 +5,10 @@ from statistics import mean
 
 # --- Function to run model via Ollama API ---
 def run_ollama(model: str, prompt: str) -> str:
+    """
+    Calls the Ollama API with streaming enabled and prints the response
+    in real time. Returns the full response string.
+    """
     url = "http://localhost:11434/api/generate"
     payload = {
         "model": model,
@@ -12,12 +16,25 @@ def run_ollama(model: str, prompt: str) -> str:
         "stream": False
     }
     try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()  # Raise an exception for bad status codes
-        return response.json()["response"]
+        # Enable streaming of the response
+        with requests.post(url, json=payload, stream=True) as response:
+            response.raise_for_status()
+            full_response = ""
+            for line in response.iter_lines(decode_unicode=True, chunk_size=8192):  # Add decode_unicode
+                if line:
+                    try:
+                        data = json.loads(line)
+                        chunk = data.get("response", "")
+                        print(chunk, end="", flush=True)
+                        full_response += chunk
+                    except json.JSONDecodeError as e:
+                        print(f"⚠️ JSONDecodeError: {e} - Line: {line}")
+                        # Consider adding a way to handle or log the invalid JSON
+            print()
+            return full_response
     except requests.exceptions.RequestException as e:
         print(f"❌ Error calling Ollama API for model {model}: {e}")
-        raise
+        return "RequestError"  # Or handle other request errors
 
 # --- Load files ---
 prompts = Path("prompts.txt").read_text(encoding="utf-8").splitlines()
