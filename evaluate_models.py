@@ -13,7 +13,7 @@ def run_ollama(model: str, prompt: str) -> str:
     payload = {
         "model": model,
         "prompt": prompt,
-        "stream": False
+        "stream": True
     }
     try:
         # Enable streaming of the response
