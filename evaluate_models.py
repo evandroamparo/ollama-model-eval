@@ -20,13 +20,26 @@ def run_ollama(model: str, prompt: str) -> str:
         with requests.post(url, json=payload, stream=True) as response:
             response.raise_for_status()
             full_response = ""
+            mode =  "" ## thinking or response
             for line in response.iter_lines(decode_unicode=True, chunk_size=8192):  # Add decode_unicode
                 if line:
                     try:
                         data = json.loads(line)
-                        chunk = data.get("response", "")
+                        thinking_chunk = data.get("thinking", "")
+                        response_chunk = data.get("response", "")
+                        # print mode indicator only when it changes
+                        if thinking_chunk and mode != "thinking":
+                            mode = "thinking"
+                            print("\n🤔 Thinking...\n", end="", flush=True)
+                        elif response_chunk and mode != "response":
+                            mode = "response"
+                            print("\n💬 Response:\n", end="", flush=True)
+
+                        chunk = thinking_chunk or response_chunk
                         print(chunk, end="", flush=True)
-                        full_response += chunk
+                        # only include response chunks in the final response
+                        if response_chunk:
+                            full_response += response_chunk
                     except json.JSONDecodeError as e:
                         print(f"⚠️ JSONDecodeError: {e} - Line: {line}")
                         # Consider adding a way to handle or log the invalid JSON
@@ -53,39 +66,49 @@ for model in models:
 
 # --- Evaluate with judge model ---
 evaluations = []
+
+# Build comprehensive evaluation prompt with ALL prompts and responses
+all_evaluations = ""
 for prompt in prompts:
     answers = {
         m: next(r["response"] for r in results[m] if r["prompt"] == prompt)
         for m in models
     }
-    evaluation_prompt = f"""
-You are an evaluator. Compare the responses for the following prompt:
-
-PROMPT: {prompt}
+    all_evaluations += f"""
+### PROMPT: {prompt}
 
 Responses:
 {json.dumps(answers, indent=2, ensure_ascii=False)}
 
-For each model, assign a score from 1 to 5 considering clarity, correctness, and completeness.
-In the end, indicate which model responded best.
-Expected format:
-
-Scores: 
-
-Model1: <score>
-Average: <average score>
-
-Model2: <score>
-Average: <average score>
-
-Best: <model name>
+---
 
 """
-    
-print(f"⚖️ Evaluating prompt responses with {judge_model}...")
-judge_response = run_ollama(judge_model, evaluation_prompt)
 
-evaluations.append({"prompt": prompt, "evaluation": judge_response})
+comprehensive_evaluation_prompt = f"""
+You are an evaluator. Compare the responses for the following prompts:
+
+{all_evaluations}
+
+For for each model, assign a score from 1 to 5 considering clarity, correctness, and completeness.
+In the end, indicate which model responded best overall.
+Expected format:
+
+Scores:
+
+<model name>: 
+Clarity: <score> and reasoning
+Correctness: <score> and reasoning
+Completeness: <score> and reasoning
+Average: <average score>
+
+[Repeat for each model]
+
+**Overall Best Model: <model name>**
+"""
+
+print(f"⚖️ Evaluating all prompt responses with {judge_model}...")
+judge_response = run_ollama(judge_model, comprehensive_evaluation_prompt)
+evaluations.append({"prompt": "all", "evaluation": judge_response})
 
 # --- Generate Markdown report ---
 report = ["# Model Evaluation Report\n"]
@@ -95,9 +118,11 @@ for prompt in prompts:
     for model in models:
         resp = next(r["response"] for r in results[model] if r["prompt"] == prompt)
         report.append(f"### Model: `{model}`\n{resp}\n")
-    ev = next(e for e in evaluations if e["prompt"] == prompt)["evaluation"]
-    report.append("### Evaluation\n")
-    report.append(ev)
+
+# Add the comprehensive evaluation at the end
+report.append("## Evaluation\n")
+overall_evaluation = next(e for e in evaluations if e["prompt"] == "all")["evaluation"]
+report.append(overall_evaluation)
 
 # --- Final ranking ---
 # report.append("# Final Ranking\n")

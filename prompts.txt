@@ -1,2 +1,2 @@
-Write a C# function that reverses a string.
-Write a Python program that reads a CSV file and prints the sum of a specific column.
+Write a C# function that reverses a string. Just code, no markdown format. Avoid long explanation text
+Write a Python program that reads a CSV file and prints the sum of a specific column. Just code, no markdown format. Avoid long explanation text
