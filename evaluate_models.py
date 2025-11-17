@@ -1,7 +1,12 @@
 import json
 import requests
+import os
 from pathlib import Path
 from statistics import mean
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
 
 # --- Function to run model via Ollama API ---
 def run_ollama(model: str, prompt: str) -> str:
@@ -48,6 +53,31 @@ def run_ollama(model: str, prompt: str) -> str:
     except requests.exceptions.RequestException as e:
         print(f"❌ Error calling Ollama API for model {model}: {e}")
         return "RequestError"  # Or handle other request errors
+
+# --- Function to run model via OpenAI API ---
+def run_openai(model: str, prompt: str) -> str:
+    """
+    Calls the OpenAI API and streams the response.
+    """
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    full_response = ""
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True  # Enable streaming
+        )
+        for chunk in response:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                chunk_content = getattr(delta, 'content', '') or ''
+                print(chunk_content, end="", flush=True)  # Print the chunk in real-time
+                full_response += chunk_content
+        print()  # New line after the response
+        return full_response
+    except Exception as e:
+        print(f"❌ Error calling OpenAI API for model {model}: {e}")
+        return "RequestError"
 
 # --- Load files ---
 prompts = Path("prompts.txt").read_text(encoding="utf-8").splitlines()
@@ -107,7 +137,7 @@ Average: <average score>
 """
 
 print(f"⚖️ Evaluating all prompt responses with {judge_model}...")
-judge_response = run_ollama(judge_model, comprehensive_evaluation_prompt)
+judge_response = run_openai(judge_model, comprehensive_evaluation_prompt)
 evaluations.append({"prompt": "all", "evaluation": judge_response})
 
 # --- Generate Markdown report ---
